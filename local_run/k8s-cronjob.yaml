@@ -1,0 +1,220 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-db-builder-config
+  namespace: security
+data:
+  GITLAB_BASE_URL: "https://gitlab.example.com"
+  GITLAB_GROUP: "security/vulnerability-data"
+  CACHE_DIR: "/cache"
+  OUTPUT_DIR: "/output"
+  UPDATE_INTERVAL: "24h"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: trivy-db-builder-secrets
+  namespace: security
+type: Opaque
+stringData:
+  GITLAB_TOKEN: "your-gitlab-token-here"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: trivy-db-cache
+  namespace: security
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi  # Cache for all vulnerability data
+  storageClassName: fast-ssd  # Use fast storage for better build performance
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: trivy-db-output
+  namespace: security
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi  # Storage for built database files
+  storageClassName: standard
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trivy-db-builder
+  namespace: security
+spec:
+  # Run daily at 4 AM (after vuln-list updates complete)
+  schedule: "0 4 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 28800  # 8 hour timeout (builds can be slow)
+      template:
+        metadata:
+          labels:
+            app: trivy-db-builder
+        spec:
+          restartPolicy: OnFailure
+          
+          containers:
+          - name: builder
+            image: your-registry/trivy-db-builder:latest
+            imagePullPolicy: Always
+            
+            envFrom:
+            - configMapRef:
+                name: trivy-db-builder-config
+            - secretRef:
+                name: trivy-db-builder-secrets
+            
+            resources:
+              requests:
+                memory: "4Gi"
+                cpu: "2000m"
+              limits:
+                memory: "8Gi"
+                cpu: "4000m"
+            
+            volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: output
+              mountPath: /output
+          
+          volumes:
+          - name: cache
+            persistentVolumeClaim:
+              claimName: trivy-db-cache
+          - name: output
+            persistentVolumeClaim:
+              claimName: trivy-db-output
+
+---
+# Service to expose database files via HTTP (optional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: trivy-db-server
+  namespace: security
+spec:
+  selector:
+    app: trivy-db-server
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+
+---
+# Simple HTTP server to serve database files
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trivy-db-server
+  namespace: security
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: trivy-db-server
+  template:
+    metadata:
+      labels:
+        app: trivy-db-server
+    spec:
+      containers:
+      - name: server
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: db
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+      volumes:
+      - name: db
+        persistentVolumeClaim:
+          claimName: trivy-db-output
+          readOnly: true
+      - name: nginx-config
+        configMap:
+          name: trivy-db-server-nginx-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-db-server-nginx-config
+  namespace: security
+data:
+  default.conf: |
+    server {
+        listen 8080;
+        server_name _;
+        
+        location / {
+            root /usr/share/nginx/html/db;
+            autoindex on;
+            autoindex_exact_size off;
+            autoindex_localtime on;
+        }
+        
+        # Serve compressed database by default
+        location = /trivy.db {
+            alias /usr/share/nginx/html/db/trivy.db.tar.gz;
+            add_header Content-Type application/gzip;
+        }
+        
+        # Health check
+        location /healthz {
+            access_log off;
+            return 200 "OK\n";
+            add_header Content-Type text/plain;
+        }
+    }
+
+---
+# Ingress to expose database externally (optional)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trivy-db-server
+  namespace: security
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - trivy-db.example.com
+    secretName: trivy-db-tls
+  rules:
+  - host: trivy-db.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: trivy-db-server
+            port:
+              number: 8080
