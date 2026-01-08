@@ -6,17 +6,20 @@ set -euo pipefail
 # Optimized for VMs with persistent storage - repos are cloned once, then updated
 #
 # Optional environment variables:
-#   CACHE_DIR        - Directory to store cloned repositories (default: /cache)
-#   OUTPUT_DIR       - Directory to store the built database (default: /output)
-#   UPDATE_INTERVAL  - Database update interval (default: 24h)
+#   CACHE_DIR        - Directory to store cloned repositories (default: ./cache)
+#   OUTPUT_DIR       - Directory to store the built database (default: ./output)
+#   UPDATE_INTERVAL  - Database update interval (default: 3h)
 #   SKIP_UPDATE      - Skip git pull operations (default: false)
+#   TRIVY_DB_DIR     - Trivy-db repository directory (default: .. - parent directory)
 
-CACHE_DIR="${CACHE_DIR:-/cache}"
-OUTPUT_DIR="${OUTPUT_DIR:-/output}"
-UPDATE_INTERVAL="${UPDATE_INTERVAL:-24h}"
+CACHE_DIR="${CACHE_DIR:-./cache}"
+OUTPUT_DIR="${OUTPUT_DIR:-./output}"
+UPDATE_INTERVAL="${UPDATE_INTERVAL:-3h}"
 SKIP_UPDATE="${SKIP_UPDATE:-false}"
+TRIVY_DB_DIR="${TRIVY_DB_DIR:-..}"
 
 echo "=== Trivy Database Builder (VM Edition) ==="
+echo "Trivy-db directory: ${TRIVY_DB_DIR}"
 echo "Cache directory: ${CACHE_DIR}"
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Update interval: ${UPDATE_INTERVAL}"
@@ -172,7 +175,7 @@ echo "=========================================="
 echo "Step 3: Building Trivy database"
 echo "=========================================="
 
-cd /home/pk/OX/thirdparty/trivy-db
+cd "${TRIVY_DB_DIR}"
 
 # Check if trivy-db binary exists
 if [ -f "./trivy-db" ] && [ -x "./trivy-db" ]; then
