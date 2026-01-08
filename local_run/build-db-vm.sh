@@ -215,14 +215,14 @@ echo "=========================================="
 echo "Step 4: Post-processing"
 echo "=========================================="
 
-if [ -f "${OUTPUT_DIR}/db/trivy.db" ]; then
-    DB_SIZE=$(du -h "${OUTPUT_DIR}/db/trivy.db" | cut -f1)
+if [ -f "${OUTPUT_DIR}/trivy.db" ]; then
+    DB_SIZE=$(du -h "${OUTPUT_DIR}/trivy.db" | cut -f1)
     echo "[$(date +%T)] ✓ Database created successfully"
-    echo "  Location: ${OUTPUT_DIR}/db/trivy.db"
+    echo "  Location: ${OUTPUT_DIR}/trivy.db"
     echo "  Size: ${DB_SIZE}"
     
     # Create metadata file
-    cat > "${OUTPUT_DIR}/db/metadata.json" <<EOF
+    cat > "${OUTPUT_DIR}/metadata.json" <<EOF
 {
   "version": 2,
   "nextUpdate": "$(date -u -d "+1 day" +%Y-%m-%dT%H:%M:%SZ)",
@@ -233,12 +233,12 @@ EOF
     
     # Compress the database
     echo "[$(date +%T)] Compressing database..."
-    cd "${OUTPUT_DIR}/db"
+    cd "${OUTPUT_DIR}"
     tar czf trivy.db.tar.gz trivy.db metadata.json
     
     COMPRESSED_SIZE=$(du -h trivy.db.tar.gz | cut -f1)
     echo "[$(date +%T)] ✓ Database compressed"
-    echo "  Location: ${OUTPUT_DIR}/db/trivy.db.tar.gz"
+    echo "  Location: ${OUTPUT_DIR}/trivy.db.tar.gz"
     echo "  Size: ${COMPRESSED_SIZE}"
     
     # Calculate checksums
@@ -250,10 +250,10 @@ EOF
     echo "=========================================="
     echo "Build Summary"
     echo "=========================================="
-    echo "Database: ${OUTPUT_DIR}/db/trivy.db (${DB_SIZE})"
-    echo "Compressed: ${OUTPUT_DIR}/db/trivy.db.tar.gz (${COMPRESSED_SIZE})"
-    echo "Metadata: ${OUTPUT_DIR}/db/metadata.json"
-    echo "Checksums: ${OUTPUT_DIR}/db/*.sha256"
+    echo "Database: ${OUTPUT_DIR}/trivy.db (${DB_SIZE})"
+    echo "Compressed: ${OUTPUT_DIR}/trivy.db.tar.gz (${COMPRESSED_SIZE})"
+    echo "Metadata: ${OUTPUT_DIR}/metadata.json"
+    echo "Checksums: ${OUTPUT_DIR}/*.sha256"
     echo ""
     echo "Repository cache: ${CACHE_DIR}"
     echo "  (Repositories are preserved for future updates)"
