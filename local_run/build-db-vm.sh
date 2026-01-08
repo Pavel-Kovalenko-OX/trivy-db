@@ -216,10 +216,25 @@ echo "Step 4: Post-processing"
 echo "=========================================="
 
 if [ -f "${OUTPUT_DIR}/trivy.db" ]; then
-    DB_SIZE=$(du -h "${OUTPUT_DIR}/trivy.db" | cut -f1)
+    DB_SIZE_BEFORE=$(du -h "${OUTPUT_DIR}/trivy.db" | cut -f1)
     echo "[$(date +%T)] ✓ Database created successfully"
     echo "  Location: ${OUTPUT_DIR}/trivy.db"
-    echo "  Size: ${DB_SIZE}"
+    echo "  Size (before compaction): ${DB_SIZE_BEFORE}"
+    
+    # Compact the database
+    echo "[$(date +%T)] Compacting database..."
+    if command -v bbolt >/dev/null 2>&1; then
+        TEMP_DB="${OUTPUT_DIR}/trivy.db.tmp"
+        bbolt compact -o "${TEMP_DB}" "${OUTPUT_DIR}/trivy.db"
+        mv "${TEMP_DB}" "${OUTPUT_DIR}/trivy.db"
+        DB_SIZE=$(du -h "${OUTPUT_DIR}/trivy.db" | cut -f1)
+        echo "[$(date +%T)] ✓ Database compacted"
+        echo "  Size (after compaction): ${DB_SIZE}"
+    else
+        echo "[$(date +%T)] ⚠ Warning: bbolt not found, skipping compaction"
+        echo "  To enable compaction: go install go.etcd.io/bbolt/cmd/bbolt@latest"
+        DB_SIZE="${DB_SIZE_BEFORE}"
+    fi
     
     # Create metadata file
     cat > "${OUTPUT_DIR}/metadata.json" <<EOF
