@@ -18,6 +18,11 @@ UPDATE_INTERVAL="${UPDATE_INTERVAL:-3h}"
 SKIP_UPDATE="${SKIP_UPDATE:-false}"
 TRIVY_DB_DIR="${TRIVY_DB_DIR:-..}"
 
+# Convert to absolute paths (important since we change directories during execution)
+CACHE_DIR="$(cd "$(dirname "${CACHE_DIR}")" 2>/dev/null && pwd)/$(basename "${CACHE_DIR}")" || CACHE_DIR="$(realpath -m "${CACHE_DIR}")"
+OUTPUT_DIR="$(cd "$(dirname "${OUTPUT_DIR}")" 2>/dev/null && pwd)/$(basename "${OUTPUT_DIR}")" || OUTPUT_DIR="$(realpath -m "${OUTPUT_DIR}")"
+TRIVY_DB_DIR="$(cd "${TRIVY_DB_DIR}" 2>/dev/null && pwd)" || TRIVY_DB_DIR="$(realpath -m "${TRIVY_DB_DIR}")"
+
 echo "=== Trivy Database Builder (VM Edition) ==="
 echo "Trivy-db directory: ${TRIVY_DB_DIR}"
 echo "Cache directory: ${CACHE_DIR}"
