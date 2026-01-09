@@ -18,11 +18,21 @@ app = Flask(__name__)
 # Configuration
 SCRIPT_DIR = Path(__file__).parent.parent.resolve()
 BUILD_SCRIPT = SCRIPT_DIR / "build-db-vm.sh"
-CACHE_DIR = os.environ.get("CACHE_DIR", SCRIPT_DIR / "cache")
-OUTPUT_DIR = os.environ.get("OUTPUT_DIR", SCRIPT_DIR / "output")
+
+# Get directory paths - ensure they're Path objects
+CACHE_DIR = Path(os.environ.get("CACHE_DIR", str(SCRIPT_DIR / "cache")))
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(SCRIPT_DIR / "output")))
+
 LOCK_FILE = Path("/tmp/build-db-vm.lock")
 LOG_FILE = Path("/tmp/trivy-db-build.log")
 MAX_LOG_LINES = 1000
+
+# Print configuration for debugging
+print(f"Configuration:")
+print(f"  SCRIPT_DIR: {SCRIPT_DIR}")
+print(f"  BUILD_SCRIPT: {BUILD_SCRIPT}")
+print(f"  CACHE_DIR: {CACHE_DIR}")
+print(f"  OUTPUT_DIR: {OUTPUT_DIR}")
 
 # In-memory log buffer
 log_buffer = deque(maxlen=MAX_LOG_LINES)
