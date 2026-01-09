@@ -108,14 +108,15 @@ def run_build_async():
     log_buffer.append(f"[{datetime.now().isoformat()}] Starting build process...\n")
     
     try:
-        # Run the build script
+        # Run the build script in its own process group
         process = subprocess.Popen(
             [str(BUILD_SCRIPT)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
             bufsize=1,
-            cwd=str(SCRIPT_DIR)
+            cwd=str(SCRIPT_DIR),
+            start_new_session=True  # Create new process group
         )
         
         # Stream output to log buffer
@@ -232,9 +233,14 @@ def api_stop_build():
     
     try:
         pid = build_status.get("pid")
-        # Send SIGTERM to allow graceful shutdown
-        os.kill(pid, 15)  # SIGTERM
-        log_buffer.append(f"\n[{datetime.now().isoformat()}] Build stop requested (PID: {pid})\n")
+        # Send SIGTERM to the entire process group to kill parent and all children
+        try:
+            os.killpg(os.getpgid(pid), 15)  # SIGTERM to process group
+            log_buffer.append(f"\n[{datetime.now().isoformat()}] Build stop requested (PID: {pid}, process group)\n")
+        except ProcessLookupError:
+            # Fallback to single process if process group doesn't exist
+            os.kill(pid, 15)
+            log_buffer.append(f"\n[{datetime.now().isoformat()}] Build stop requested (PID: {pid})\n")
         
         return jsonify({
             "success": True,
