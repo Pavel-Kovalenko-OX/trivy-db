@@ -6,11 +6,13 @@ set -euo pipefail
 # Optimized for VMs with persistent storage - repos are cloned once, then updated
 #
 # Optional environment variables:
-#   CACHE_DIR        - Directory to store cloned repositories (default: ./cache)
-#   OUTPUT_DIR       - Directory to store the built database (default: ./output)
-#   UPDATE_INTERVAL  - Database update interval (default: 3h)
-#   SKIP_UPDATE      - Skip git pull operations (default: false)
-#   TRIVY_DB_DIR     - Trivy-db repository directory (default: .. - parent directory)
+#   CACHE_DIR               - Directory to store cloned repositories (default: ./cache)
+#   OUTPUT_DIR              - Directory to store the built database (default: ./output)
+#   UPDATE_INTERVAL         - Database update interval (default: 3h)
+#   SKIP_UPDATE             - Skip git pull operations (default: false)
+#   TRIVY_DB_DIR            - Trivy-db repository directory (default: .. - parent directory)
+#   RUN_NVD_UPDATE          - Run incremental NVD update after Step 1 (default: true)
+#   VULN_LIST_UPDATE_DIR    - Path to vuln-list-update directory (default: {TRIVY_DB_DIR}/local_run/vuln-list-update)
 
 # Lock file to prevent multiple instances
 LOCK_FILE="/tmp/build-db-vm.lock"
@@ -79,6 +81,8 @@ OUTPUT_DIR="${OUTPUT_DIR:-./output}"
 UPDATE_INTERVAL="${UPDATE_INTERVAL:-3h}"
 SKIP_UPDATE="${SKIP_UPDATE:-false}"
 TRIVY_DB_DIR="${TRIVY_DB_DIR:-..}"
+RUN_NVD_UPDATE="${RUN_NVD_UPDATE:-true}"
+VULN_LIST_UPDATE_DIR="${VULN_LIST_UPDATE_DIR:-}"
 
 # Convert to absolute paths (important since we change directories during execution)
 CACHE_DIR="$(cd "$(dirname "${CACHE_DIR}")" 2>/dev/null && pwd)/$(basename "${CACHE_DIR}")" || CACHE_DIR="$(realpath -m "${CACHE_DIR}")"
@@ -91,6 +95,7 @@ echo "Cache directory: ${CACHE_DIR}"
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Update interval: ${UPDATE_INTERVAL}"
 echo "Skip updates: ${SKIP_UPDATE}"
+echo "NVD incremental update: ${RUN_NVD_UPDATE}"
 echo ""
 
 # Create directories
@@ -169,6 +174,49 @@ if git ls-remote --exit-code https://github.com/aquasecurity/vuln-list-aqua.git 
     echo "  ✓ vuln-list-aqua found and processed"
 else
     echo "  ℹ vuln-list-aqua not found (optional)"
+fi
+
+# Step 1.5: Incremental NVD Update (optional but highly recommended)
+if [ "${RUN_NVD_UPDATE}" = "true" ]; then
+    echo ""
+    echo "=========================================="
+    echo "Step 1.5: Incremental NVD Update"
+    echo "=========================================="
+    
+    # Set default path if not specified
+    if [ -z "${VULN_LIST_UPDATE_DIR}" ]; then
+        VULN_LIST_UPDATE_DIR="${TRIVY_DB_DIR}/local_run/vuln-list-update"
+    fi
+    
+    UPDATE_SCRIPT="${VULN_LIST_UPDATE_DIR}/local_run/update-local.sh"
+    
+    if [ -f "${UPDATE_SCRIPT}" ]; then
+        echo "[$(date +%T)] Running incremental NVD update..."
+        echo "  Update script: ${UPDATE_SCRIPT}"
+        echo "  Target: NVD (National Vulnerability Database)"
+        echo "  Method: Incremental API-based updates"
+        echo ""
+        
+        # Run the update script with proper environment
+        # Non-blocking: if it fails, log warning and continue
+        if APP_DIR="${VULN_LIST_UPDATE_DIR}" CACHE_DIR="${CACHE_DIR}" TARGETS=nvd "${UPDATE_SCRIPT}" 2>&1; then
+            echo ""
+            echo "[$(date +%T)] ✓ NVD incremental update completed"
+        else
+            echo ""
+            echo "[$(date +%T)] ⚠ Warning: NVD incremental update failed"
+            echo "  Continuing with existing NVD data from git repository"
+            echo "  This is non-critical - the build will proceed normally"
+        fi
+    else
+        echo "[$(date +%T)] ℹ Skipping NVD incremental update"
+        echo "  Update script not found: ${UPDATE_SCRIPT}"
+        echo "  Using NVD data from git repository only"
+        echo ""
+        echo "  To enable incremental NVD updates:"
+        echo "    1. Clone vuln-list-update: git clone https://github.com/aquasecurity/vuln-list-update.git ${VULN_LIST_UPDATE_DIR}"
+        echo "    2. Or set: VULN_LIST_UPDATE_DIR=/path/to/vuln-list-update"
+    fi
 fi
 
 # Step 2: Fetch language-specific advisory databases
