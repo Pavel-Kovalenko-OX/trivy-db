@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trivy DB Build Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+        }
+
+        .card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-idle { background: #48bb78; }
+        .status-running { background: #ed8936; }
+        .status-error { background: #f56565; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .info-value {
+            color: #2d3748;
+            text-align: right;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover:not(:disabled) {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #e53e3e;
+        }
+
+        .logs-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .logs-header h2 {
+            color: #667eea;
+        }
+
+        #logs {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #logs::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #logs::-webkit-scrollbar-track {
+            background: #2d3748;
+            border-radius: 4px;
+        }
+
+        #logs::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 4px;
+        }
+
+        #logs::-webkit-scrollbar-thumb:hover {
+            background: #718096;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge-success { background: #c6f6d5; color: #22543d; }
+        .badge-warning { background: #feebc8; color: #7c2d12; }
+        .badge-error { background: #fed7d7; color: #742a2a; }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #a0aec0;
+        }
+
+        .timestamp {
+            font-size: 0.85rem;
+            color: #718096;
+            text-align: right;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            button {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ Trivy DB Build Monitor</h1>
+            <p>Monitor and manage your vulnerability database builds</p>
+        </header>
+
+        <div class="grid">
+            <!-- Build Status Card -->
+            <div class="card">
+                <h2>
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    Build Status
+                </h2>
+                <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" id="buildStatus">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Process ID:</span>
+                    <span class="info-value" id="buildPid">-</span>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-primary" id="btnStartBuild" onclick="startBuild()">
+                        <span>▶️</span> Start Build
+                    </button>
+                    <button class="btn-danger" id="btnClearLock" onclick="clearLock()" style="display: none;">
+                        <span>🔓</span> Clear Lock
+                    </button>
+                </div>
+            </div>
+
+            <!-- Database Info Card -->
+            <div class="card">
+                <h2>📦 Database Info</h2>
+                <div class="info-row">
+                    <span class="info-label">Database:</span>
+                    <span class="info-value" id="dbExists">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Size:</span>
+                    <span class="info-value" id="dbSize">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Updated:</span>
+                    <span class="info-value" id="dbMtime">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Compressed:</span>
+                    <span class="info-value" id="tarSize">-</span>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-success" id="btnDownloadDb" onclick="downloadDb()" disabled>
+                        <span>⬇️</span> Download DB
+                    </button>
+                    <button class="btn-success" id="btnDownloadMetadata" onclick="downloadMetadata()" disabled>
+                        <span>📄</span> Metadata
+                    </button>
+                </div>
+            </div>
+
+            <!-- Metadata Card -->
+            <div class="card">
+                <h2>ℹ️ Metadata</h2>
+                <div class="info-row">
+                    <span class="info-label">Version:</span>
+                    <span class="info-value" id="metaVersion">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Updated At:</span>
+                    <span class="info-value" id="metaUpdated">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Next Update:</span>
+                    <span class="info-value" id="metaNext">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Downloaded At:</span>
+                    <span class="info-value" id="metaDownloaded">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Build Logs -->
+        <div class="logs-container">
+            <div class="logs-header">
+                <h2>📋 Build Logs</h2>
+                <button class="btn-primary" onclick="refreshLogs()">
+                    <span id="refreshIcon">🔄</span> Refresh
+                </button>
+            </div>
+            <div id="logs" class="empty-state">No logs available. Start a build to see logs here.</div>
+            <div class="timestamp" id="lastUpdate">Last updated: Never</div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefresh = null;
+
+        function formatDate(isoString) {
+            if (!isoString) return '-';
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+
+        function showNotification(message, type = 'info') {
+            // Simple notification - could be enhanced with a toast library
+            alert(message);
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                // Update build status
+                const buildStatus = data.build.status;
+                const statusText = {
+                    'idle': '✅ Idle',
+                    'running': '🔄 Running',
+                    'stale_lock': '⚠️ Stale Lock',
+                    'error': '❌ Error'
+                };
+                
+                document.getElementById('buildStatus').innerHTML = 
+                    `<span class="badge badge-${buildStatus === 'idle' ? 'success' : buildStatus === 'running' ? 'warning' : 'error'}">${statusText[buildStatus] || buildStatus}</span>`;
+                
+                const statusIndicator = document.getElementById('statusIndicator');
+                statusIndicator.className = 'status-indicator status-' + (buildStatus === 'running' ? 'running' : buildStatus === 'idle' ? 'idle' : 'error');
+                
+                document.getElementById('buildPid').textContent = data.build.pid || '-';
+                
+                // Update buttons
+                const btnStartBuild = document.getElementById('btnStartBuild');
+                const btnClearLock = document.getElementById('btnClearLock');
+                
+                if (buildStatus === 'running') {
+                    btnStartBuild.disabled = true;
+                    btnStartBuild.innerHTML = '<span class="spinner"></span> Building...';
+                    btnClearLock.style.display = 'none';
+                    // Enable auto-refresh during build
+                    if (!autoRefresh) {
+                        autoRefresh = setInterval(() => {
+                            updateStatus();
+                            refreshLogs();
+                        }, 3000);
+                    }
+                } else {
+                    btnStartBuild.disabled = false;
+                    btnStartBuild.innerHTML = '<span>▶️</span> Start Build';
+                    if (autoRefresh) {
+                        clearInterval(autoRefresh);
+                        autoRefresh = null;
+                    }
+                    
+                    if (buildStatus === 'stale_lock') {
+                        btnClearLock.style.display = 'flex';
+                    } else {
+                        btnClearLock.style.display = 'none';
+                    }
+                }
+                
+                // Update database info
+                const db = data.database;
+                document.getElementById('dbExists').innerHTML = db.db_exists ? 
+                    '<span class="badge badge-success">✓ Available</span>' : 
+                    '<span class="badge badge-error">✗ Not Found</span>';
+                document.getElementById('dbSize').textContent = db.db_size_formatted || '-';
+                document.getElementById('dbMtime').textContent = formatDate(db.db_mtime);
+                document.getElementById('tarSize').textContent = db.tar_size_formatted || '-';
+                
+                // Enable/disable download buttons
+                document.getElementById('btnDownloadDb').disabled = !db.tar_exists;
+                document.getElementById('btnDownloadMetadata').disabled = !db.metadata;
+                
+                // Update metadata
+                if (db.metadata) {
+                    document.getElementById('metaVersion').textContent = db.metadata.version || '-';
+                    document.getElementById('metaUpdated').textContent = formatDate(db.metadata.updatedAt);
+                    document.getElementById('metaNext').textContent = formatDate(db.metadata.nextUpdate);
+                    document.getElementById('metaDownloaded').textContent = formatDate(db.metadata.downloadedAt);
+                } else {
+                    document.getElementById('metaVersion').textContent = '-';
+                    document.getElementById('metaUpdated').textContent = '-';
+                    document.getElementById('metaNext').textContent = '-';
+                    document.getElementById('metaDownloaded').textContent = '-';
+                }
+                
+                document.getElementById('lastUpdate').textContent = 'Last updated: ' + formatDate(data.timestamp);
+                
+            } catch (error) {
+                console.error('Error updating status:', error);
+                document.getElementById('buildStatus').innerHTML = '<span class="badge badge-error">❌ Error</span>';
+            }
+        }
+
+        async function refreshLogs() {
+            try {
+                const refreshIcon = document.getElementById('refreshIcon');
+                refreshIcon.style.transform = 'rotate(360deg)';
+                refreshIcon.style.transition = 'transform 0.5s';
+                
+                const response = await fetch('/api/logs?lines=500');
+                const data = await response.json();
+                
+                const logsDiv = document.getElementById('logs');
+                if (data.logs && data.logs.length > 0) {
+                    logsDiv.textContent = data.logs.join('');
+                    logsDiv.scrollTop = logsDiv.scrollHeight;
+                } else {
+                    logsDiv.className = 'empty-state';
+                    logsDiv.textContent = 'No logs available. Start a build to see logs here.';
+                }
+                
+                setTimeout(() => {
+                    refreshIcon.style.transform = 'rotate(0deg)';
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error fetching logs:', error);
+            }
+        }
+
+        async function startBuild() {
+            if (!confirm('Start a new database build? This may take a while.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/build', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Build started successfully!', 'success');
+                    setTimeout(() => {
+                        updateStatus();
+                        refreshLogs();
+                    }, 1000);
+                } else {
+                    showNotification('Failed to start build: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Error starting build: ' + error.message, 'error');
+            }
+        }
+
+        async function clearLock() {
+            if (!confirm('Clear the stale lock file? Only do this if no build is actually running.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/clear-lock', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Lock cleared successfully!', 'success');
+                    updateStatus();
+                } else {
+                    showNotification('Failed to clear lock: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Error clearing lock: ' + error.message, 'error');
+            }
+        }
+
+        function downloadDb() {
+            window.location.href = '/api/download/db';
+        }
+
+        function downloadMetadata() {
+            window.location.href = '/api/download/metadata';
+        }
+
+        // Initialize
+        updateStatus();
+        refreshLogs();
+        
+        // Refresh status every 5 seconds when not building
+        setInterval(() => {
+            if (!autoRefresh) {
+                updateStatus();
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
