@@ -285,9 +285,178 @@
                 min-width: 100%;
             }
         }
+        
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        
+        .toast {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            min-width: 300px;
+            max-width: 400px;
+            pointer-events: auto;
+            animation: slideIn 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-left: 4px solid;
+        }
+        
+        .toast.success { border-left-color: #48bb78; }
+        .toast.error { border-left-color: #f56565; }
+        .toast.info { border-left-color: #4299e1; }
+        .toast.warning { border-left-color: #ed8936; }
+        
+        .toast-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .toast-content {
+            flex: 1;
+        }
+        
+        .toast-message {
+            color: #2d3748;
+            font-weight: 500;
+            margin: 0;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            color: #a0aec0;
+            cursor: pointer;
+            font-size: 20px;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .toast-close:hover {
+            background: #edf2f7;
+            color: #4a5568;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+        
+        /* Confirmation Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease-out;
+        }
+        
+        .modal {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: scaleIn 0.3s ease-out;
+        }
+        
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .modal-icon {
+            font-size: 32px;
+        }
+        
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin: 0;
+        }
+        
+        .modal-message {
+            color: #4a5568;
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        
+        .modal-buttons button {
+            min-width: 100px;
+            padding: 10px 20px;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes scaleIn {
+            from {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
     <div class="container">
         <header>
             <h1>🛡️ Trivy DB Build Monitor</h1>
@@ -400,8 +569,68 @@
         }
 
         function showNotification(message, type = 'info') {
-            // Simple notification - could be enhanced with a toast library
-            alert(message);
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type] || icons.info}</div>
+                <div class="toast-content">
+                    <p class="toast-message">${message}</p>
+                </div>
+                <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+        
+        function showConfirmDialog(message, onConfirm, title = 'Confirm Action') {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay';
+                
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                
+                modal.innerHTML = `
+                    <div class="modal-header">
+                        <div class="modal-icon">⚠️</div>
+                        <h3 class="modal-title">${title}</h3>
+                    </div>
+                    <div class="modal-message">${message}</div>
+                    <div class="modal-buttons">
+                        <button class="btn-primary" onclick="this.closest('.modal-overlay').remove(); window.modalResolve(false);">Cancel</button>
+                        <button class="btn-danger" onclick="this.closest('.modal-overlay').remove(); window.modalResolve(true);">Confirm</button>
+                    </div>
+                `;
+                
+                overlay.appendChild(modal);
+                document.body.appendChild(overlay);
+                
+                // Store resolve in window for button access
+                window.modalResolve = resolve;
+                
+                // Close on overlay click
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolve(false);
+                    }
+                });
+            });
         }
 
         async function updateStatus() {
@@ -539,9 +768,13 @@
         }
 
         async function startBuild() {
-            if (!confirm('Start a new database build? This may take a while.')) {
-                return;
-            }
+            const confirmed = await showConfirmDialog(
+                'Start a new database build? This may take a while and will consume significant resources.',
+                null,
+                'Start Build'
+            );
+            
+            if (!confirmed) return;
             
             try {
                 const response = await fetch('/api/build', { method: 'POST' });
@@ -562,9 +795,13 @@
         }
 
         async function stopBuild() {
-            if (!confirm('Stop the current build? This will terminate the build process.')) {
-                return;
-            }
+            const confirmed = await showConfirmDialog(
+                'Stop the current build? This will terminate the build process and may leave temporary files.',
+                null,
+                'Stop Build'
+            );
+            
+            if (!confirmed) return;
             
             try {
                 const response = await fetch('/api/build/stop', { method: 'POST' });
@@ -585,9 +822,13 @@
         }
 
         async function clearLock() {
-            if (!confirm('Clear the stale lock file? Only do this if no build is actually running.')) {
-                return;
-            }
+            const confirmed = await showConfirmDialog(
+                'Clear the stale lock file? Only do this if no build is actually running. This action cannot be undone.',
+                null,
+                'Clear Lock File'
+            );
+            
+            if (!confirmed) return;
             
             try {
                 const response = await fetch('/api/clear-lock', { method: 'POST' });
