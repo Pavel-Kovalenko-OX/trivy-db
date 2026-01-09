@@ -207,6 +207,39 @@ def api_build():
     })
 
 
+@app.route('/api/build/stop', methods=['POST'])
+def api_stop_build():
+    """Stop a running database build"""
+    build_status = get_build_status()
+    
+    if build_status["status"] != "running":
+        return jsonify({
+            "success": False,
+            "message": "No build is currently running"
+        }), 409
+    
+    try:
+        pid = build_status.get("pid")
+        # Send SIGTERM to allow graceful shutdown
+        os.kill(pid, 15)  # SIGTERM
+        log_buffer.append(f"\n[{datetime.now().isoformat()}] Build stop requested (PID: {pid})\n")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Stop signal sent to build process (PID: {pid})"
+        })
+    except ProcessLookupError:
+        return jsonify({
+            "success": False,
+            "message": "Build process not found"
+        }), 404
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Failed to stop build: {str(e)}"
+        }), 500
+
+
 @app.route('/api/download/db')
 def api_download_db():
     """Download the database file"""

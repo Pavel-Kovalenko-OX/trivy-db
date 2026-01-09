@@ -167,6 +167,15 @@
         .btn-danger:hover:not(:disabled) {
             background: #e53e3e;
         }
+        
+        .btn-warning {
+            background: #ed8936;
+            color: white;
+        }
+        
+        .btn-warning:hover:not(:disabled) {
+            background: #dd6b20;
+        }
 
         .logs-container {
             background: white;
@@ -300,9 +309,16 @@
                     <span class="info-label">Process ID:</span>
                     <span class="info-value" id="buildPid">-</span>
                 </div>
+                <div class="info-row" id="buildTimeRow" style="display: none;">
+                    <span class="info-label">Build Time:</span>
+                    <span class="info-value" id="buildTime">-</span>
+                </div>
                 <div class="btn-group">
                     <button class="btn-primary" id="btnStartBuild" onclick="startBuild()">
                         <span>▶️</span> Start Build
+                    </button>
+                    <button class="btn-warning" id="btnStopBuild" onclick="stopBuild()" style="display: none;">
+                        <span>⏹️</span> Stop Build
                     </button>
                     <button class="btn-danger" id="btnClearLock" onclick="clearLock()" style="display: none;">
                         <span>🔓</span> Clear Lock
@@ -412,11 +428,14 @@
                 
                 // Update buttons
                 const btnStartBuild = document.getElementById('btnStartBuild');
+                const btnStopBuild = document.getElementById('btnStopBuild');
                 const btnClearLock = document.getElementById('btnClearLock');
                 
                 if (buildStatus === 'running') {
                     btnStartBuild.disabled = true;
                     btnStartBuild.innerHTML = '<span class="spinner"></span> Building...';
+                    btnStopBuild.style.display = 'flex';
+                    btnStopBuild.disabled = false;
                     btnClearLock.style.display = 'none';
                     // Enable auto-refresh during build
                     if (!autoRefresh) {
@@ -428,6 +447,7 @@
                 } else {
                     btnStartBuild.disabled = false;
                     btnStartBuild.innerHTML = '<span>▶️</span> Start Build';
+                    btnStopBuild.style.display = 'none';
                     if (autoRefresh) {
                         clearInterval(autoRefresh);
                         autoRefresh = null;
@@ -438,6 +458,16 @@
                     } else {
                         btnClearLock.style.display = 'none';
                     }
+                }
+                
+                // Extract build time from database metadata if available
+                const buildTimeRow = document.getElementById('buildTimeRow');
+                const buildTimeSpan = document.getElementById('buildTime');
+                if (db.metadata && db.metadata.updatedAt) {
+                    // Check logs for build time
+                    updateBuildTimeFromLogs();
+                } else {
+                    buildTimeRow.style.display = 'none';
                 }
                 
                 // Update database info
@@ -487,6 +517,9 @@
                 if (data.logs && data.logs.length > 0) {
                     logsDiv.textContent = data.logs.join('');
                     logsDiv.scrollTop = logsDiv.scrollHeight;
+                    
+                    // Update build time if available in logs
+                    updateBuildTimeFromLogs();
                 } else {
                     logsDiv.className = 'empty-state';
                     logsDiv.textContent = 'No logs available. Start a build to see logs here.';
@@ -524,6 +557,29 @@
             }
         }
 
+        async function stopBuild() {
+            if (!confirm('Stop the current build? This will terminate the build process.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/build/stop', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Build stop signal sent. The build will terminate shortly.', 'success');
+                    setTimeout(() => {
+                        updateStatus();
+                        refreshLogs();
+                    }, 1000);
+                } else {
+                    showNotification('Failed to stop build: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Error stopping build: ' + error.message, 'error');
+            }
+        }
+
         async function clearLock() {
             if (!confirm('Clear the stale lock file? Only do this if no build is actually running.')) {
                 return;
@@ -550,6 +606,28 @@
 
         function downloadMetadata() {
             window.location.href = '/api/download/metadata';
+        }
+        
+        function updateBuildTimeFromLogs() {
+            // Try to extract build time from logs
+            const logs = Array.from(document.getElementById('logs').textContent.split('\n'));
+            const buildTimeRow = document.getElementById('buildTimeRow');
+            const buildTimeSpan = document.getElementById('buildTime');
+            
+            // Look for "Build time:" in logs
+            for (let i = logs.length - 1; i >= 0; i--) {
+                if (logs[i].includes('Build time:')) {
+                    const match = logs[i].match(/Build time:\s*(.+)/);
+                    if (match) {
+                        buildTimeSpan.textContent = match[1].trim();
+                        buildTimeRow.style.display = 'flex';
+                        return;
+                    }
+                }
+            }
+            
+            // If no build time found in logs, hide the row
+            buildTimeRow.style.display = 'none';
         }
 
         // Initialize

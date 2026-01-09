@@ -13,14 +13,31 @@ set -euo pipefail
 # Lock file to prevent multiple instances
 LOCK_FILE="/tmp/build-db.lock"
 
-# Cleanup function to remove lock file
+# Cleanup function to remove lock file and tmp directory
 cleanup() {
     local exit_code=$?
+    
+    # Clean up temporary output directory if it exists
+    if [ -n "${TMP_OUTPUT_DIR:-}" ] && [ -d "${TMP_OUTPUT_DIR}" ]; then
+        echo ""
+        echo "[$(date +%T)] Cleaning up temporary directory..."
+        rm -rf "${TMP_OUTPUT_DIR}"
+    fi
+    
+    # Remove lock file
     if [ -f "${LOCK_FILE}" ]; then
         rm -f "${LOCK_FILE}"
-        echo ""
         echo "[$(date +%T)] Lock file removed"
     fi
+    
+    # Display build time on early exit
+    if [ $exit_code -ne 0 ] && [ -n "${BUILD_START_TIME:-}" ]; then
+        BUILD_END_TIME=$(date +%s)
+        BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
+        echo ""
+        echo "Build interrupted after ${BUILD_DURATION} seconds"
+    fi
+    
     exit ${exit_code}
 }
 
@@ -37,6 +54,9 @@ fi
 # Create lock file
 echo "$$" > "${LOCK_FILE}"
 echo "[$(date +%T)] Lock acquired (PID: $$)"
+
+# Record build start time
+BUILD_START_TIME=$(date +%s)
 
 CACHE_DIR="${CACHE_DIR:-/cache}"
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
@@ -55,6 +75,12 @@ echo ""
 # Create directories
 mkdir -p "${CACHE_DIR}"
 mkdir -p "${OUTPUT_DIR}"
+
+# Create temporary output directory for atomic deployment
+TMP_OUTPUT_DIR="${OUTPUT_DIR}.tmp.$$"
+mkdir -p "${TMP_OUTPUT_DIR}"
+echo "Temporary build directory: ${TMP_OUTPUT_DIR}"
+echo ""
 
 # Function to clone or update a git repository from GitLab
 git_clone_or_update_gitlab() {
@@ -227,13 +253,13 @@ fi
 
 echo "[$(date +%T)] Starting database build..."
 echo "  Cache dir: ${CACHE_DIR}"
-echo "  Output dir: ${OUTPUT_DIR}"
+echo "  Temp output dir: ${TMP_OUTPUT_DIR}"
 echo "  Update interval: ${UPDATE_INTERVAL}"
 echo ""
 
 ./trivy-db build \
     --cache-dir "${CACHE_DIR}" \
-    --output-dir "${OUTPUT_DIR}" \
+    --output-dir "${TMP_OUTPUT_DIR}" \
     --update-interval "${UPDATE_INTERVAL}"
 
 # Step 4: Verify and compress
@@ -242,19 +268,19 @@ echo "=========================================="
 echo "Step 4: Post-processing"
 echo "=========================================="
 
-if [ -f "${OUTPUT_DIR}/trivy.db" ]; then
-    DB_SIZE_BEFORE=$(du -h "${OUTPUT_DIR}/trivy.db" | cut -f1)
+if [ -f "${TMP_OUTPUT_DIR}/trivy.db" ]; then
+    DB_SIZE_BEFORE=$(du -h "${TMP_OUTPUT_DIR}/trivy.db" | cut -f1)
     echo "[$(date +%T)] ✓ Database created successfully"
-    echo "  Location: ${OUTPUT_DIR}/trivy.db"
+    echo "  Location: ${TMP_OUTPUT_DIR}/trivy.db"
     echo "  Size (before compaction): ${DB_SIZE_BEFORE}"
     
     # Compact the database
     echo "[$(date +%T)] Compacting database..."
     if command -v bbolt >/dev/null 2>&1; then
-        TEMP_DB="${OUTPUT_DIR}/trivy.db.tmp"
-        bbolt compact -o "${TEMP_DB}" "${OUTPUT_DIR}/trivy.db"
-        mv "${TEMP_DB}" "${OUTPUT_DIR}/trivy.db"
-        DB_SIZE=$(du -h "${OUTPUT_DIR}/trivy.db" | cut -f1)
+        TEMP_DB="${TMP_OUTPUT_DIR}/trivy.db.tmp"
+        bbolt compact -o "${TEMP_DB}" "${TMP_OUTPUT_DIR}/trivy.db"
+        mv "${TEMP_DB}" "${TMP_OUTPUT_DIR}/trivy.db"
+        DB_SIZE=$(du -h "${TMP_OUTPUT_DIR}/trivy.db" | cut -f1)
         echo "[$(date +%T)] ✓ Database compacted"
         echo "  Size (after compaction): ${DB_SIZE}"
     else
@@ -264,7 +290,7 @@ if [ -f "${OUTPUT_DIR}/trivy.db" ]; then
     fi
     
     # Create metadata file
-    cat > "${OUTPUT_DIR}/metadata.json" <<EOF
+    cat > "${TMP_OUTPUT_DIR}/metadata.json" <<EOF
 {
   "version": 2,
   "nextUpdate": "$(date -u -d "+1 day" +%Y-%m-%dT%H:%M:%SZ)",
@@ -275,18 +301,47 @@ EOF
     
     # Compress the database
     echo "[$(date +%T)] Compressing database..."
-    cd "${OUTPUT_DIR}"
+    cd "${TMP_OUTPUT_DIR}"
     tar czf trivy.db.tar.gz trivy.db metadata.json
     
     COMPRESSED_SIZE=$(du -h trivy.db.tar.gz | cut -f1)
     echo "[$(date +%T)] ✓ Database compressed"
-    echo "  Location: ${OUTPUT_DIR}/trivy.db.tar.gz"
+    echo "  Location: ${TMP_OUTPUT_DIR}/trivy.db.tar.gz"
     echo "  Size: ${COMPRESSED_SIZE}"
     
     # Calculate checksums
     echo "[$(date +%T)] Generating checksums..."
     sha256sum trivy.db > trivy.db.sha256
     sha256sum trivy.db.tar.gz > trivy.db.tar.gz.sha256
+    
+    # Step 5: Atomic deployment
+    echo ""
+    echo "=========================================="
+    echo "Step 5: Deploying database"
+    echo "=========================================="
+    
+    echo "[$(date +%T)] Moving build to final location..."
+    
+    # Backup existing database if it exists
+    if [ -d "${OUTPUT_DIR}" ] && [ -f "${OUTPUT_DIR}/trivy.db" ]; then
+        BACKUP_DIR="${OUTPUT_DIR}.backup.$(date +%s)"
+        echo "  Creating backup: ${BACKUP_DIR}"
+        mv "${OUTPUT_DIR}" "${BACKUP_DIR}"
+        
+        # Keep only the last 2 backups
+        ls -dt "${OUTPUT_DIR}".backup.* 2>/dev/null | tail -n +3 | xargs rm -rf 2>/dev/null || true
+    fi
+    
+    # Move new build to final location
+    mv "${TMP_OUTPUT_DIR}" "${OUTPUT_DIR}"
+    echo "[$(date +%T)] ✓ Database deployed successfully"
+    
+    # Calculate and display build time
+    BUILD_END_TIME=$(date +%s)
+    BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
+    BUILD_HOURS=$((BUILD_DURATION / 3600))
+    BUILD_MINUTES=$(((BUILD_DURATION % 3600) / 60))
+    BUILD_SECONDS=$((BUILD_DURATION % 60))
     
     echo ""
     echo "=========================================="
@@ -300,10 +355,21 @@ EOF
     echo "Repository cache: ${CACHE_DIR}"
     echo "  (Repositories are preserved for future updates)"
     echo ""
+    printf "Build time: "
+    if [ $BUILD_HOURS -gt 0 ]; then
+        printf "%dh %dm %ds\n" $BUILD_HOURS $BUILD_MINUTES $BUILD_SECONDS
+    elif [ $BUILD_MINUTES -gt 0 ]; then
+        printf "%dm %ds\n" $BUILD_MINUTES $BUILD_SECONDS
+    else
+        printf "%ds\n" $BUILD_SECONDS
+    fi
+    echo ""
     echo "✓ Build completed successfully at $(date)"
     
 else
     echo "[$(date +%T)] ✗ ERROR: Database file not found"
+    # Clean up temporary directory
+    rm -rf "${TMP_OUTPUT_DIR}"
     exit 1
 fi
 
