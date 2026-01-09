@@ -153,6 +153,10 @@ def api_status():
     db_info['db_size_formatted'] = format_size(db_info['db_size'])
     db_info['tar_size_formatted'] = format_size(db_info['tar_size'])
     
+    # Debug logging
+    print(f"[DEBUG] Build status: {build_status}")
+    print(f"[DEBUG] DB exists: {db_info['db_exists']}, Size: {db_info['db_size_formatted']}")
+    
     return jsonify({
         "build": build_status,
         "database": db_info,

@@ -433,7 +433,7 @@
                 
                 if (buildStatus === 'running') {
                     btnStartBuild.disabled = true;
-                    btnStartBuild.innerHTML = '<span class="spinner"></span> Building...';
+                    btnStartBuild.innerHTML = '<span class=\"spinner\"></span> Building...';
                     btnStopBuild.style.display = 'flex';
                     btnStopBuild.disabled = false;
                     btnClearLock.style.display = 'none';
@@ -460,6 +460,19 @@
                     }
                 }
                 
+                // Update database info (define db BEFORE using it)
+                const db = data.database;
+                document.getElementById('dbExists').innerHTML = db.db_exists ? 
+                    '<span class=\"badge badge-success\">✓ Available</span>' : 
+                    '<span class=\"badge badge-error\">✗ Not Found</span>';
+                document.getElementById('dbSize').textContent = db.db_size_formatted || '-';
+                document.getElementById('dbMtime').textContent = formatDate(db.db_mtime);
+                document.getElementById('tarSize').textContent = db.tar_size_formatted || '-';
+                
+                // Enable/disable download buttons
+                document.getElementById('btnDownloadDb').disabled = !db.tar_exists;
+                document.getElementById('btnDownloadMetadata').disabled = !db.metadata;
+                
                 // Extract build time from database metadata if available
                 const buildTimeRow = document.getElementById('buildTimeRow');
                 const buildTimeSpan = document.getElementById('buildTime');
@@ -469,15 +482,6 @@
                 } else {
                     buildTimeRow.style.display = 'none';
                 }
-                
-                // Update database info
-                const db = data.database;
-                document.getElementById('dbExists').innerHTML = db.db_exists ? 
-                    '<span class="badge badge-success">✓ Available</span>' : 
-                    '<span class="badge badge-error">✗ Not Found</span>';
-                document.getElementById('dbSize').textContent = db.db_size_formatted || '-';
-                document.getElementById('dbMtime').textContent = formatDate(db.db_mtime);
-                document.getElementById('tarSize').textContent = db.tar_size_formatted || '-';
                 
                 // Enable/disable download buttons
                 document.getElementById('btnDownloadDb').disabled = !db.tar_exists;
