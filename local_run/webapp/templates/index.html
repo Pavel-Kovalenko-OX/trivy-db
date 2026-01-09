@@ -116,8 +116,6 @@
         }
 
         button {
-            flex: 1;
-            min-width: 120px;
             padding: 12px 20px;
             border: none;
             border-radius: 8px;
@@ -129,6 +127,12 @@
             align-items: center;
             justify-content: center;
             gap: 8px;
+            white-space: nowrap;
+        }
+        
+        .btn-group button {
+            flex: 1;
+            min-width: 120px;
         }
 
         button:disabled {
@@ -176,10 +180,17 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
+            gap: 20px;
         }
 
         .logs-header h2 {
             color: #667eea;
+            flex: 1;
+        }
+        
+        .logs-header button {
+            flex: 0 0 auto;
+            min-width: auto;
         }
 
         #logs {
