@@ -12,6 +12,34 @@ set -euo pipefail
 #   SKIP_UPDATE      - Skip git pull operations (default: false)
 #   TRIVY_DB_DIR     - Trivy-db repository directory (default: .. - parent directory)
 
+# Lock file to prevent multiple instances
+LOCK_FILE="/tmp/build-db-vm.lock"
+
+# Cleanup function to remove lock file
+cleanup() {
+    local exit_code=$?
+    if [ -f "${LOCK_FILE}" ]; then
+        rm -f "${LOCK_FILE}"
+        echo ""
+        echo "[$(date +%T)] Lock file removed"
+    fi
+    exit ${exit_code}
+}
+
+# Set trap to ensure cleanup on exit
+trap cleanup EXIT INT TERM
+
+# Check if another instance is running
+if [ -f "${LOCK_FILE}" ]; then
+    echo "[$(date +%T)] ✗ ERROR: Another instance is already running (lock file exists: ${LOCK_FILE})" >&2
+    echo "  If no other instance is running, remove the lock file manually: rm ${LOCK_FILE}" >&2
+    exit 1
+fi
+
+# Create lock file
+echo "$$" > "${LOCK_FILE}"
+echo "[$(date +%T)] Lock acquired (PID: $$)"
+
 CACHE_DIR="${CACHE_DIR:-./cache}"
 OUTPUT_DIR="${OUTPUT_DIR:-./output}"
 UPDATE_INTERVAL="${UPDATE_INTERVAL:-3h}"
