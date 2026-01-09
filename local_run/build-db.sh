@@ -53,7 +53,7 @@ cleanup() {
 }
 
 # Set trap to ensure cleanup on exit
-trap cleanup EXIT INT TERM
+trap cleanup INT TERM
 
 # Check if another instance is running
 if [ -f "${LOCK_FILE}" ]; then
@@ -398,4 +398,5 @@ echo "To update the database later, simply run this script again."
 echo "Repositories will be updated automatically (git pull)."
 echo ""
 
+cleanup
 exit 0

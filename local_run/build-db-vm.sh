@@ -55,7 +55,7 @@ cleanup() {
 }
 
 # Set trap to ensure cleanup on exit
-trap cleanup EXIT INT TERM
+trap cleanup INT TERM
 
 # Check if another instance is running
 if [ -f "${LOCK_FILE}" ]; then
@@ -402,4 +402,5 @@ echo "To skip repository updates and just rebuild from cache:"
 echo "  SKIP_UPDATE=true $0"
 echo ""
 
+cleanup
 exit 0

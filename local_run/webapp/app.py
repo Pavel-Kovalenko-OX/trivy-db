@@ -128,10 +128,8 @@ def run_build_async():
         
         process.wait()
         
-        if process.returncode == 0:
-            log_buffer.append(f"\n[{datetime.now().isoformat()}] Build completed successfully\n")
-        else:
-            log_buffer.append(f"\n[{datetime.now().isoformat()}] Build failed with exit code {process.returncode}\n")
+        # Don't add webapp status message - the build script already logs its own status
+        # Exit codes: 0=success, 130=SIGINT, 143=SIGTERM, others=failure
             
     except Exception as e:
         log_buffer.append(f"\n[{datetime.now().isoformat()}] Build error: {str(e)}\n")
