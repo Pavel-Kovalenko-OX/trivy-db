@@ -32,12 +32,23 @@ cleanup() {
         echo "[$(date +%T)] Lock file removed"
     fi
     
-    # Display build time on early exit
-    if [ $exit_code -ne 0 ] && [ -n "${BUILD_START_TIME:-}" ]; then
+    # Display build time and status on exit
+    if [ -n "${BUILD_START_TIME:-}" ]; then
         BUILD_END_TIME=$(date +%s)
         BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
-        echo ""
-        echo "Build interrupted after ${BUILD_DURATION} seconds"
+        
+        if [ $exit_code -ne 0 ]; then
+            echo ""
+            if [ $exit_code -eq 130 ] || [ $exit_code -eq 143 ]; then
+                # 130 = SIGINT (Ctrl+C), 143 = SIGTERM (kill)
+                echo "⚠ Build interrupted after ${BUILD_DURATION} seconds"
+            else
+                echo "✗ Build failed after ${BUILD_DURATION} seconds (exit code: $exit_code)"
+            fi
+        elif [ "${BUILD_SUCCESS}" != "true" ]; then
+            echo ""
+            echo "⚠ Build incomplete after ${BUILD_DURATION} seconds"
+        fi
     fi
     
     exit ${exit_code}
@@ -59,6 +70,9 @@ echo "[$(date +%T)] Lock acquired (PID: $$)"
 
 # Record build start time
 BUILD_START_TIME=$(date +%s)
+
+# Flag to track successful completion
+BUILD_SUCCESS=false
 
 CACHE_DIR="${CACHE_DIR:-./cache}"
 OUTPUT_DIR="${OUTPUT_DIR:-./output}"
@@ -356,6 +370,9 @@ EOF
     echo "Repository cache: ${CACHE_DIR}"
     echo "  (Repositories are preserved for future updates)"
     echo ""
+    # Mark build as successful
+    BUILD_SUCCESS=true
+    
     printf "Build time: "
     if [ $BUILD_HOURS -gt 0 ]; then
         printf "%dh %dm %ds\n" $BUILD_HOURS $BUILD_MINUTES $BUILD_SECONDS
