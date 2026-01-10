@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trivy DB Build Monitor Web Application
+Trivy DB Control Center
 A Flask-based web interface for monitoring and controlling the Trivy DB build process
 """
 
@@ -102,12 +102,16 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} TB"
 
 
-def run_build_async():
+def run_build_async(target='nvd'):
     """Run the build script asynchronously and capture output"""
     log_buffer.clear()
-    log_buffer.append(f"[{datetime.now().isoformat()}] Starting build process...\n")
+    log_buffer.append(f"[{datetime.now().isoformat()}] Starting build process (target: {target})...\n")
     
     try:
+        # Set environment variable for update target
+        env = os.environ.copy()
+        env['VULN_LIST_UPDATE_TARGET'] = target
+        
         # Run the build script in its own process group
         process = subprocess.Popen(
             [str(BUILD_SCRIPT)],
@@ -116,7 +120,8 @@ def run_build_async():
             universal_newlines=True,
             bufsize=1,
             cwd=str(SCRIPT_DIR),
-            start_new_session=True  # Create new process group
+            start_new_session=True,  # Create new process group
+            env=env
         )
         
         # Stream output to log buffer
@@ -206,17 +211,31 @@ def api_build():
             "pid": build_status.get("pid")
         }), 409
     
+    # Get target from request (default to 'nvd')
+    target = 'nvd'
+    if request.is_json:
+        data = request.get_json()
+        target = data.get('target', 'nvd')
+    
+    # Validate target
+    valid_targets = ['nvd', 'quick', 'all', 'none']
+    if target not in valid_targets:
+        return jsonify({
+            "success": False,
+            "message": f"Invalid target '{target}'. Valid targets: {', '.join(valid_targets)}"
+        }), 400
+    
     # Clear old logs
     if LOG_FILE.exists():
         LOG_FILE.unlink()
     
-    # Start build in background thread
-    thread = threading.Thread(target=run_build_async, daemon=True)
+    # Start build in background thread with target parameter
+    thread = threading.Thread(target=run_build_async, args=(target,), daemon=True)
     thread.start()
     
     return jsonify({
         "success": True,
-        "message": "Build started successfully"
+        "message": f"Build started successfully with target: {target}"
     })
 
 
@@ -334,7 +353,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('DEBUG', 'false').lower() == 'true'
     
-    print(f"Starting Trivy DB Monitor on http://0.0.0.0:{port}")
+    print(f"Starting Trivy DB Control Center on http://0.0.0.0:{port}")
     print(f"Build script: {BUILD_SCRIPT}")
     print(f"Output directory: {OUTPUT_DIR}")
     

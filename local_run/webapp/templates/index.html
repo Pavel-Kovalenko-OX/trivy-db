@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trivy DB Build Monitor</title>
+    <title>Trivy DB Control Center</title>
     <style>
         * {
             margin: 0;
@@ -175,6 +175,28 @@
         
         .btn-warning:hover:not(:disabled) {
             background: #dd6b20;
+        }
+
+        .select-target {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            max-width: 250px;
+        }
+
+        .select-target:hover {
+            border-color: #667eea;
+        }
+
+        .select-target:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .logs-container {
@@ -459,7 +481,7 @@
     
     <div class="container">
         <header>
-            <h1>🛡️ Trivy DB Build Monitor</h1>
+            <h1>🛡️ Trivy DB Control Center</h1>
             <p>Monitor and manage your vulnerability database builds</p>
         </header>
 
@@ -481,6 +503,15 @@
                 <div class="info-row" id="buildTimeRow" style="display: none;">
                     <span class="info-label">Build Time:</span>
                     <span class="info-value" id="buildTime">-</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Update Target:</span>
+                    <select id="updateTarget" class="select-target">
+                        <option value="nvd" selected>NVD Only (Fast)</option>
+                        <option value="quick">Quick Update (NVD + Selected)</option>
+                        <option value="all">All Sources (Comprehensive)</option>
+                        <option value="none">None (Git Only)</option>
+                    </select>
                 </div>
                 <div class="btn-group">
                     <button class="btn-primary" id="btnStartBuild" onclick="startBuild()">
@@ -768,8 +799,16 @@
         }
 
         async function startBuild() {
+            const target = document.getElementById('updateTarget').value;
+            const targetLabels = {
+                'nvd': 'NVD Only',
+                'quick': 'Quick Update',
+                'all': 'All Sources',
+                'none': 'No Incremental Update'
+            };
+            
             const confirmed = await showConfirmDialog(
-                'Start a new database build? This may take a while and will consume significant resources.',
+                `Start a new database build? This may take a while and will consume significant resources.\n\nUpdate target: ${targetLabels[target]}`,
                 null,
                 'Start Build'
             );
@@ -777,7 +816,11 @@
             if (!confirmed) return;
             
             try {
-                const response = await fetch('/api/build', { method: 'POST' });
+                const response = await fetch('/api/build', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: target })
+                });
                 const data = await response.json();
                 
                 if (data.success) {
