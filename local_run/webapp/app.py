@@ -25,7 +25,7 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(SCRIPT_DIR / "output")))
 
 LOCK_FILE = Path("/tmp/build-db-vm.lock")
 LOG_FILE = Path("/tmp/trivy-db-build.log")
-MAX_LOG_LINES = 1000
+MAX_LOG_LINES = int(os.environ.get("LOG_BUFFER_SIZE", "5000"))
 
 # Print configuration for debugging
 print(f"Configuration:")
@@ -33,6 +33,7 @@ print(f"  SCRIPT_DIR: {SCRIPT_DIR}")
 print(f"  BUILD_SCRIPT: {BUILD_SCRIPT}")
 print(f"  CACHE_DIR: {CACHE_DIR}")
 print(f"  OUTPUT_DIR: {OUTPUT_DIR}")
+print(f"  LOG_BUFFER_SIZE: {MAX_LOG_LINES} lines")
 
 # In-memory log buffer
 log_buffer = deque(maxlen=MAX_LOG_LINES)
