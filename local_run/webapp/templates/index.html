@@ -199,6 +199,62 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        /* Toggle Switch Styles */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #667eea;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        .toggle-label {
+            display: inline-block;
+            color: #666;
+            font-size: 14px;
+            font-weight: 500;
+            vertical-align: middle;
+        }
+
         .logs-container {
             background: white;
             border-radius: 12px;
@@ -513,6 +569,14 @@
                         <option value="none">None (Git Only)</option>
                     </select>
                 </div>
+                <div class="info-row">
+                    <span class="info-label">Custom Signatures:</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="customSignatures">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label" id="customSigsLabel">Disabled</span>
+                </div>
                 <div class="btn-group">
                     <button class="btn-primary" id="btnStartBuild" onclick="startBuild()">
                         <span>▶️</span> Start Build
@@ -800,6 +864,7 @@
 
         async function startBuild() {
             const target = document.getElementById('updateTarget').value;
+            const customSigs = document.getElementById('customSignatures').checked;
             const targetLabels = {
                 'nvd': 'NVD Only',
                 'quick': 'Quick Update',
@@ -807,8 +872,13 @@
                 'none': 'No Incremental Update'
             };
             
+            let confirmMessage = `Start a new database build? This may take a while and will consume significant resources.\n\nUpdate target: ${targetLabels[target]}`;
+            if (customSigs) {
+                confirmMessage += '\n⚠️ Custom signatures: ENABLED';
+            }
+            
             const confirmed = await showConfirmDialog(
-                `Start a new database build? This may take a while and will consume significant resources.\n\nUpdate target: ${targetLabels[target]}`,
+                confirmMessage,
                 null,
                 'Start Build'
             );
@@ -819,7 +889,10 @@
                 const response = await fetch('/api/build', { 
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target: target })
+                    body: JSON.stringify({ 
+                        target: target,
+                        custom_signatures: customSigs
+                    })
                 });
                 const data = await response.json();
                 
@@ -921,6 +994,13 @@
         // Initialize
         updateStatus();
         refreshLogs();
+        
+        // Custom signatures toggle handler
+        document.getElementById('customSignatures').addEventListener('change', function() {
+            const label = document.getElementById('customSigsLabel');
+            label.textContent = this.checked ? 'Enabled' : 'Disabled';
+            label.style.color = this.checked ? '#667eea' : '#666';
+        });
         
         // Refresh status every 5 seconds when not building
         setInterval(() => {

@@ -103,15 +103,16 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} TB"
 
 
-def run_build_async(target='nvd'):
+def run_build_async(target='nvd', custom_sigs=False):
     """Run the build script asynchronously and capture output"""
     log_buffer.clear()
-    log_buffer.append(f"[{datetime.now().isoformat()}] Starting build process (target: {target})...\n")
+    log_buffer.append(f"[{datetime.now().isoformat()}] Starting build process (target: {target}, custom signatures: {custom_sigs})...\n")
     
     try:
-        # Set environment variable for update target
+        # Set environment variables
         env = os.environ.copy()
         env['VULN_LIST_UPDATE_TARGET'] = target
+        env['CUSTOM_SIGNATURES_ENABLED'] = 'true' if custom_sigs else 'false'
         
         # Run the build script in its own process group
         process = subprocess.Popen(
@@ -212,11 +213,13 @@ def api_build():
             "pid": build_status.get("pid")
         }), 409
     
-    # Get target from request (default to 'nvd')
+    # Get parameters from request (defaults: target='nvd', custom_sigs=false)
     target = 'nvd'
+    custom_sigs = False
     if request.is_json:
         data = request.get_json()
         target = data.get('target', 'nvd')
+        custom_sigs = data.get('custom_signatures', False)
     
     # Validate target
     valid_targets = ['nvd', 'quick', 'all', 'none']
@@ -230,13 +233,13 @@ def api_build():
     if LOG_FILE.exists():
         LOG_FILE.unlink()
     
-    # Start build in background thread with target parameter
-    thread = threading.Thread(target=run_build_async, args=(target,), daemon=True)
+    # Start build in background thread with parameters
+    thread = threading.Thread(target=run_build_async, args=(target, custom_sigs), daemon=True)
     thread.start()
     
     return jsonify({
         "success": True,
-        "message": f"Build started successfully with target: {target}"
+        "message": f"Build started successfully (target: {target}, custom signatures: {custom_sigs})"
     })
 
 

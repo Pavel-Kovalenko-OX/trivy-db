@@ -13,6 +13,9 @@ set -euo pipefail
 #   TRIVY_DB_DIR               - Trivy-db repository directory (default: .. - parent directory)
 #   VULN_LIST_UPDATE_TARGET    - Incremental update target: nvd, quick, all, or none (default: nvd)
 #   VULN_LIST_UPDATE_DIR       - Path to vuln-list-update directory (default: {TRIVY_DB_DIR}/local_run/vuln-list-update)
+#   CUSTOM_SIGNATURES_ENABLED  - Enable custom vulnerability signatures injection (default: false)
+#   CUSTOM_SIGNATURES_REPO     - Git repository URL for custom signatures (default: https://github.com/Pavel-Kovalenko-OX/test-vuln-pkgs.git)
+#   CUSTOM_SIGNATURES_BRANCH   - Branch to use for custom signatures (default: main)
 
 # Lock file to prevent multiple instances
 LOCK_FILE="/tmp/build-db-vm.lock"
@@ -96,6 +99,7 @@ echo "Output directory: ${OUTPUT_DIR}"
 echo "Update interval: ${UPDATE_INTERVAL}"
 echo "Skip updates: ${SKIP_UPDATE}"
 echo "Incremental update target: ${VULN_LIST_UPDATE_TARGET}"
+echo "Custom signatures: ${CUSTOM_SIGNATURES_ENABLED:-false}"
 echo ""
 
 # Create directories
@@ -317,6 +321,66 @@ else
         "main"
 fi
 
+# Step 2.5: Inject Custom Signatures (optional)
+if [ "${CUSTOM_SIGNATURES_ENABLED:-false}" = "true" ]; then
+    echo ""
+    echo "=========================================="
+    echo "Step 2.5: Injecting Custom Signatures"
+    echo "=========================================="
+    
+    CUSTOM_SIGNATURES_REPO="${CUSTOM_SIGNATURES_REPO:-https://github.com/Pavel-Kovalenko-OX/test-vuln-pkgs.git}"
+    CUSTOM_SIGNATURES_BRANCH="${CUSTOM_SIGNATURES_BRANCH:-main}"
+    CUSTOM_SIGS_DIR="${CACHE_DIR}/.custom-signatures-tmp"
+    CUSTOM_SIGS_DEST="${CACHE_DIR}/ghsa/advisories/github-reviewed/custom_signatures"
+    
+    echo "Custom signatures repository: ${CUSTOM_SIGNATURES_REPO}"
+    echo "Target destination: ${CUSTOM_SIGS_DEST}"
+    echo ""
+    
+    # Clone or update custom signatures repository
+    git_clone_or_update \
+        "${CUSTOM_SIGNATURES_REPO}" \
+        "${CUSTOM_SIGS_DIR}" \
+        "${CUSTOM_SIGNATURES_BRANCH}"
+    
+    # Remove old custom signatures if they exist
+    if [ -d "${CUSTOM_SIGS_DEST}" ]; then
+        echo "[$(date +%T)] Removing old custom signatures..."
+        rm -rf "${CUSTOM_SIGS_DEST}"
+    fi
+    
+    # Copy custom signatures into GHSA directory
+    echo "[$(date +%T)] Copying custom signatures..."
+    mkdir -p "${CUSTOM_SIGS_DEST}"
+    
+    # Copy entire repo structure (preserving year/ecosystem/package structure)
+    if [ -d "${CUSTOM_SIGS_DIR}" ]; then
+        cp -r "${CUSTOM_SIGS_DIR}/"* "${CUSTOM_SIGS_DEST}/" 2>/dev/null || true
+        
+        # Count signatures
+        CUSTOM_SIG_COUNT=$(find "${CUSTOM_SIGS_DEST}" -name "*.json" 2>/dev/null | wc -l || echo "0")
+        echo "  ✓ Copied ${CUSTOM_SIG_COUNT} custom signature(s)"
+        
+        # Show structure
+        if [ "${CUSTOM_SIG_COUNT}" -gt 0 ]; then
+            echo "  Custom signatures structure:"
+            find "${CUSTOM_SIGS_DEST}" -name "*.json" | head -5 | sed 's/^/    /'
+            if [ "${CUSTOM_SIG_COUNT}" -gt 5 ]; then
+                echo "    ... and $((CUSTOM_SIG_COUNT - 5)) more"
+            fi
+        fi
+    else
+        echo "  ⚠ Warning: Custom signatures directory not found"
+    fi
+else
+    echo ""
+    echo "=========================================="
+    echo "Step 2.5: Custom Signatures (Skipped)"
+    echo "=========================================="
+    echo "  Custom signatures injection is disabled"
+    echo "  Set CUSTOM_SIGNATURES_ENABLED=true to enable"
+fi
+
 # Step 3: Build the database
 echo ""
 echo "=========================================="
@@ -324,6 +388,12 @@ echo "Step 3: Building Trivy database"
 echo "=========================================="
 
 cd "${TRIVY_DB_DIR}"
+
+# Remove old database to ensure clean build (prevents incremental update issues)
+if [ -f "${TMP_OUTPUT_DIR}/trivy.db" ]; then
+    echo "[$(date +%T)] Removing previous database for clean build..."
+    rm -f "${TMP_OUTPUT_DIR}/trivy.db"
+fi
 
 # Check if trivy-db binary exists
 if [ -f "./trivy-db" ] && [ -x "./trivy-db" ]; then
